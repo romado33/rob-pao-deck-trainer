@@ -31,3 +31,10 @@ dist-ssr
 
 # CodeGPT
 .codegpt
+
+# Personal PAO System (keep private)
+images/
+images_old/
+*.docx
+~$*.docx
+test_images.html
