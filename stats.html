@@ -31,6 +31,25 @@
         return new Date(dateString).toLocaleString();
       }
 
+      function formatTime(milliseconds) {
+        if (!milliseconds || milliseconds === null) return 'N/A';
+        const seconds = (milliseconds / 1000).toFixed(2);
+        return `${seconds}s`;
+      }
+
+      function formatWrongCards(hand) {
+        if (!hand.wrongCards || hand.wrongCards.length === 0) {
+          return '<span class="text-green-600">All correct</span>';
+        }
+        const labels = ['Person', 'Action', 'Object'];
+        const wrongLabels = hand.wrongCards.map(idx => {
+          const label = labels[idx];
+          const card = hand.cards[idx];
+          return `<span class="inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded mr-1">${label} (${card})</span>`;
+        });
+        return wrongLabels.join('');
+      }
+
       function sortTable(n, type) {
         const table = document.getElementById("stats-body");
         const rows = Array.from(table.getElementsByTagName("tr"));
@@ -78,6 +97,83 @@
         const incorrectCount = allHands.length - correctCount;
         const correctRatio = Math.round((correctCount / allHands.length) * 100);
         const totalHands = allHands.length; // total number of hands
+        
+        // Calculate average recall time (all time)
+        const handsWithTime = allHands.filter(h => h.recallTimeMs != null);
+        const avgRecallTime = handsWithTime.length > 0 
+          ? (handsWithTime.reduce((sum, h) => sum + h.recallTimeMs, 0) / handsWithTime.length / 1000).toFixed(2)
+          : 'N/A';
+
+        // Calculate average recall time for past week
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        const recentHands = allHands.filter(h => {
+          return h.recallTimeMs != null && new Date(h.timestamp) >= oneWeekAgo;
+        });
+        const avgRecallTimeWeek = recentHands.length > 0
+          ? (recentHands.reduce((sum, h) => sum + h.recallTimeMs, 0) / recentHands.length / 1000).toFixed(2)
+          : 'N/A';
+
+        // Track detailed card statistics
+        const cardStats = {};
+        allHands.forEach(hand => {
+          hand.cards.forEach((card, idx) => {
+            if (!cardStats[card]) {
+              cardStats[card] = {
+                totalAppearances: 0,
+                errors: 0,
+                errorsByRole: { Person: 0, Action: 0, Object: 0 },
+                appearancesByRole: { Person: 0, Action: 0, Object: 0 },
+                totalTime: 0,
+                timeCount: 0
+              };
+            }
+            
+            const role = idx === 0 ? 'Person' : idx === 1 ? 'Action' : 'Object';
+            cardStats[card].totalAppearances++;
+            cardStats[card].appearancesByRole[role]++;
+            
+            if (hand.recallTimeMs) {
+              cardStats[card].totalTime += hand.recallTimeMs;
+              cardStats[card].timeCount++;
+            }
+            
+            if (hand.wrongCards && hand.wrongCards.includes(idx)) {
+              cardStats[card].errors++;
+              cardStats[card].errorsByRole[role]++;
+            }
+          });
+        });
+
+        // Calculate detailed metrics for each card
+        const cardAnalytics = Object.entries(cardStats)
+          .map(([card, stats]) => {
+            const errorRate = ((stats.errors / stats.totalAppearances) * 100).toFixed(1);
+            const avgTime = stats.timeCount > 0 
+              ? (stats.totalTime / stats.timeCount / 1000).toFixed(2)
+              : 'N/A';
+            
+            const rolesWithErrors = Object.entries(stats.errorsByRole)
+              .filter(([role, count]) => count > 0)
+              .map(([role, count]) => {
+                const total = stats.appearancesByRole[role];
+                const rate = ((count / total) * 100).toFixed(0);
+                return { role, count, total, rate };
+              });
+            
+            return {
+              card,
+              errors: stats.errors,
+              totalAppearances: stats.totalAppearances,
+              errorRate: parseFloat(errorRate),
+              avgTime,
+              rolesWithErrors,
+              stats
+            };
+          })
+          .filter(c => c.errors > 0)
+          .sort((a, b) => b.errors - a.errors)
+          .slice(0, 10);
 
         let message = "";
         let bgClass = "";
@@ -108,10 +204,12 @@
                     <table class="min-w-full">
                         <thead>
                             <tr class="bg-gray-50">
-                                <th onclick="sortTable(0, 'date')" class="px-4 py-2 text-left">Time</th>
-                                <th onclick="sortTable(1, 'text')" class="px-4 py-2 text-left">Cards</th>
-                                <th onclick="sortTable(2, 'text')" class="px-4 py-2 text-left">Scene</th>
-                                <th onclick="sortTable(3, 'text')" class="px-4 py-2 text-left">Result</th>
+                                <th onclick="sortTable(0, 'date')" class="px-4 py-2 text-left cursor-pointer hover:bg-gray-100">Time</th>
+                                <th onclick="sortTable(1, 'text')" class="px-4 py-2 text-left cursor-pointer hover:bg-gray-100">Cards</th>
+                                <th onclick="sortTable(2, 'text')" class="px-4 py-2 text-left cursor-pointer hover:bg-gray-100">Scene</th>
+                                <th onclick="sortTable(3, 'text')" class="px-4 py-2 text-left cursor-pointer hover:bg-gray-100">Recall Time</th>
+                                <th class="px-4 py-2 text-left">Wrong Cards</th>
+                                <th onclick="sortTable(5, 'text')" class="px-4 py-2 text-left cursor-pointer hover:bg-gray-100">Result</th>
                             </tr>
                         </thead>
                         <tbody id="stats-body" data-sort-col="0" data-sort-dir="desc" class="divide-y divide-gray-200">
@@ -128,6 +226,8 @@
                                       " → "
                                     )}</td>
                                     <td class="px-4 py-2">${hand.scene}</td>
+                                    <td class="px-4 py-2 font-mono text-sm">${formatTime(hand.recallTimeMs)}</td>
+                                    <td class="px-4 py-2 text-sm">${formatWrongCards(hand)}</td>
                                     <td class="px-4 py-2">
                                         <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                                           hand.isCorrect
@@ -148,12 +248,104 @@
                         </tbody>
                     </table>
                 </div>
+
+                ${cardAnalytics.length > 0 ? `
+                <div class="mt-8 bg-yellow-50 border-2 border-yellow-200 rounded-lg p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                        Detailed Card Analytics
+                    </h2>
+                    <p class="text-sm text-gray-600 mb-4">Your most problematic cards with detailed performance metrics:</p>
+                    <div class="grid grid-cols-1 gap-4">
+                        ${cardAnalytics.map((card, index) => `
+                            <div class="bg-white rounded-lg p-4 border-l-4 ${
+                              card.errorRate > 50 ? 'border-red-500' : 
+                              card.errorRate > 25 ? 'border-orange-500' : 'border-yellow-500'
+                            } shadow">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-3xl font-bold ${
+                                          card.errorRate > 50 ? 'text-red-600' : 
+                                          card.errorRate > 25 ? 'text-orange-600' : 'text-yellow-600'
+                                        }">#${index + 1}</span>
+                                        <div>
+                                            <span class="text-2xl font-bold text-gray-800">${card.card}</span>
+                                            <div class="flex gap-2 mt-1">
+                                                <span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-medium">
+                                                    ${card.errors} errors
+                                                </span>
+                                                <span class="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs font-medium">
+                                                    ${card.totalAppearances} appearances
+                                                </span>
+                                                <span class="bg-${
+                                                  card.errorRate > 50 ? 'red' : 
+                                                  card.errorRate > 25 ? 'orange' : 'yellow'
+                                                }-100 text-${
+                                                  card.errorRate > 50 ? 'red' : 
+                                                  card.errorRate > 25 ? 'orange' : 'yellow'
+                                                }-800 px-2 py-1 rounded text-xs font-medium">
+                                                    ${card.errorRate}% error rate
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-xs text-gray-500 mb-1">Avg Time</div>
+                                        <div class="text-lg font-mono font-bold text-indigo-600">${card.avgTime}s</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-200">
+                                    ${['Person', 'Action', 'Object'].map(role => {
+                                      const roleData = card.rolesWithErrors.find(r => r.role === role);
+                                      const total = card.stats.appearancesByRole[role];
+                                      if (total === 0) return '';
+                                      
+                                      if (roleData) {
+                                        return `
+                                          <div class="text-center bg-red-50 rounded p-2">
+                                              <div class="text-xs font-semibold text-gray-600">${role}</div>
+                                              <div class="text-sm font-bold text-red-600">${roleData.count}/${roleData.total}</div>
+                                              <div class="text-xs text-red-700">${roleData.rate}% error</div>
+                                          </div>
+                                        `;
+                                      } else {
+                                        return `
+                                          <div class="text-center bg-green-50 rounded p-2">
+                                              <div class="text-xs font-semibold text-gray-600">${role}</div>
+                                              <div class="text-sm font-bold text-green-600">0/${total}</div>
+                                              <div class="text-xs text-green-700">✓ Perfect</div>
+                                          </div>
+                                        `;
+                                      }
+                                    }).join('')}
+                                </div>
+                                
+                                ${card.errorRate > 50 ? `
+                                  <div class="mt-3 p-2 bg-red-100 rounded text-xs text-red-800">
+                                      <strong>⚠️ High Priority:</strong> This card has a very high error rate. Consider changing it in your PAO system.
+                                  </div>
+                                ` : card.errorRate > 25 ? `
+                                  <div class="mt-3 p-2 bg-orange-100 rounded text-xs text-orange-800">
+                                      <strong>📝 Needs Practice:</strong> This card needs more review and practice.
+                                  </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+
                 <div class="mt-4 p-4 border-l-4 ${bgClass}">
                     <p class="text-base mb-2">
                         Correct: ${correctCount}<br>
                         Incorrect: ${incorrectCount}<br>
                         Correct Ratio: ${correctRatio}%<br>
-                        Total Hands: ${totalHands}
+                        Total Hands: ${totalHands}<br>
+                        Average Recall Time (All Time): ${avgRecallTime}s<br>
+                        Average Recall Time (Past Week): ${avgRecallTimeWeek}s ${recentHands.length > 0 ? `(${recentHands.length} hands)` : ''}
                     </p>
                     <p class="font-semibold">${message}</p>
                     
