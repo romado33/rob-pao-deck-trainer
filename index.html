@@ -800,15 +800,19 @@
         /**
          * Advances to the next card set and resets answer visibility
          * Regenerates deck when reaching the end
+         * @param {Object} updatedWrongCardsData - Optional updated wrong cards data (to avoid stale state)
          */
-        const nextSet = () => {
+        const nextSet = (updatedWrongCardsData = null) => {
           setShowAnswer(false);
           const nextIndex = currentSetIndex + 1;
+          
+          // Use provided updated data or fall back to current state
+          const wrongCardsToUse = updatedWrongCardsData || wrongCardsData;
           
           // If we've reached the end of the deck, regenerate with updated wrong cards data
           if (nextIndex >= cardSets.length) {
             console.log("Reached end of deck, regenerating with wrong cards weighted...");
-            setCardSets(generateRandomTriplets(selectedSuit, wrongCardsData));
+            setCardSets(generateRandomTriplets(selectedSuit, wrongCardsToUse));
             setCurrentSetIndex(0);
           } else {
             setCurrentSetIndex(nextIndex);
@@ -865,6 +869,7 @@
           });
 
           // Track wrong cards for weighted deck generation
+          let updatedWrongCardsData = null;
           if (!isCorrect && wrongCards.length > 0) {
             setWrongCardsData((prev) => {
               const updated = { ...prev };
@@ -879,6 +884,7 @@
               });
               
               saveWrongCards(updated);
+              updatedWrongCardsData = updated; // Capture for immediate use
               return updated;
             });
           }
@@ -894,7 +900,7 @@
           } else {
             setStreak(0);
           }
-          nextSet();
+          nextSet(updatedWrongCardsData);
         };
 
         // Add cleanup on component unmount
