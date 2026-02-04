@@ -27,6 +27,17 @@
     </div>
 
     <script>
+      /**
+       * Escapes HTML special characters to prevent XSS
+       * @param {string} str - String to escape
+       * @returns {string} Escaped string safe for HTML insertion
+       */
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
       function formatDate(dateString) {
         return new Date(dateString).toLocaleString();
       }
@@ -43,8 +54,8 @@
         }
         const labels = ['Person', 'Action', 'Object'];
         const wrongLabels = hand.wrongCards.map(idx => {
-          const label = labels[idx];
-          const card = hand.cards[idx];
+          const label = escapeHtml(labels[idx]);
+          const card = escapeHtml(hand.cards[idx]);
           return `<span class="inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded mr-1">${label} (${card})</span>`;
         });
         return wrongLabels.join('');
@@ -229,10 +240,10 @@
                                     <td class="px-4 py-2 text-sm text-gray-500">${new Date(
                                       hand.timestamp
                                     ).toLocaleString()}</td>
-                                    <td class="px-4 py-2">${hand.cards.join(
+                                    <td class="px-4 py-2">${hand.cards.map(c => escapeHtml(c)).join(
                                       " → "
                                     )}</td>
-                                    <td class="px-4 py-2">${hand.scene}</td>
+                                    <td class="px-4 py-2">${escapeHtml(hand.scene)}</td>
                                     <td class="px-4 py-2 font-mono text-sm">${formatTime(hand.recallTimeMs)}</td>
                                     <td class="px-4 py-2 text-sm">${formatWrongCards(hand)}</td>
                                     <td class="px-4 py-2">
@@ -278,7 +289,7 @@
                                           card.errorRate > 25 ? 'text-orange-600' : 'text-yellow-600'
                                         }">#${index + 1}</span>
                                         <div>
-                                            <span class="text-2xl font-bold text-gray-800">${card.card}</span>
+                                            <span class="text-2xl font-bold text-gray-800">${escapeHtml(card.card)}</span>
                                             <div class="flex gap-2 mt-1">
                                                 <span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-medium">
                                                     ${card.errors} errors
